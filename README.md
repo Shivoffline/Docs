@@ -866,3 +866,1079 @@ $ ./get_helm.sh
   
 =================================================================================================
 
+K8s: COntainer Orchestration tool 
+
+Architecture:
+
+Master node -> Kube-API server, etcd server, Control manager, Scheduler
+
+Worker node -> Kubelet, Pods, Containers, Kubeproxy.
+
+Killercoda.com -> CKS
+
+kubectl get pods -n kube-system
+
+kubectl get nodes
+
+kubectl describe nodes node01 
+
+Master node + Worker node =Cluster
+Kube-API server -> communication between master node components and worker node.
+ETCD -> Inbuilt database, keep track of every cluster transaction that occurs.
+Kube controller manager -> Monitor k8s objects and remediate the situation.
+Kube Scheduler -> find best nodes for each containers.
+
+Kubelet -> Operates pods from API server instructions
+Kubeproxy -> maintain network between nodes and enables between Pods and external APIs
+
+cd /etc/kubernetes/
+cd manifests/
+ls  -> to check all config yaml files 
+
+vi pod.yaml -> copy from k8s docs
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+
+kubectl create -f pod.yaml
+pod/nginx created
+kubectl get pods
+kubectl get pods -o wide 
+kubectl describe pods
+
+kubectl delete pods nginx 
+kubectl get pods
+
+
+replicaset -> No of pods
+Deployment -> replicaset & no of pod details
+
+k=kubectl 
+k get rs
+vi replicaset.yaml
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+    spec:
+      containers:
+      - name: nginx
+        image: nginx 
+
+
+
+k create -f replicaset.yaml
+k get rs
+k describe rs frontend 
+ 
+
+k get deploy
+kubectl create deployment --image nginx:1.21 --port 80 --replicas=2 dep1
+k get deploy 
+
+k describe deploy <dep1> 
+
+Namespace: Namespaces are a way to organize clusters into virtual sub-clusters (eg: State in a country)
+k get namespace or k get ns
+k create namespace dev 
+k config set-context --current --namespace=dev 
+k config view 
+k config view | grep namespace 
+k create -f pod.yaml --ns dev 
+
+k get pods -A -> display all pods in all namespace 
+k get all 
+
+Scheduler:
+vi pod.yaml 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+  labels:
+   app: gw
+   type: front-end
+spec:
+  containers:
+  - name: c1
+    image: nginx
+    
+k create -f pod.yaml
+
+k get pods --selector app=gw 
+k get pods
+
+Services:
+Cluster IP -> 
+
+k config set-context --current --namespace=default
+k get service 
+k get svc
+
+Diff Cluster IP needs to be communicated using Services
+
+vi svc.yaml
+
+apiVersion: v1
+kind: Service 
+metadata:
+  name: my-service  
+spec:
+  ports:
+   - targetPort: 80
+     port: 80  
+
+k create -f svc.yaml
+k get svc
+
+k get pods
+
+k config set-context --current --namespace=dev
+k get pods
+vi svc.yaml -> change service name
+
+apiVersion: v1
+kind: Service 
+metadata:
+  name: your-service  
+spec:
+  ports:
+    - targetPort: 80
+	  port: 80	 
+
+k create -f svc.yaml
+k get svc
+k edit svc <service-name> -> enter label name of the pod within the namespace
+
+selector: 
+  app: gw
+  type: front-end 
+ 
+k describe svc <service-name>
+
+curl http://<cluster-IP:80>
+
+
+vi svc.yaml  -> entering NodePort 
+
+apiVersion: v1
+kind: Service 
+metadata:
+  name: node-service  
+spec:
+  type: NodePort 
+  ports:
+    - targetPort: 80
+	  port: 80	
+      NodePort: 31000 
+  selector: 
+    app: gw
+    type: front-end 
+	  
+	  
+k create -f svc.yaml
+k get svc 
+
+===============================================================================
+Taints -> Nodes 
+Toleration -> Pod
+
+k run usa-pod --image nginx
+k get pod -o wide
+k taint nodes node01 env=prod:NoSchedule
+k describe nodes node01 
+k describe nodes node01 | less 
+
+k run ind-pod --image nginx
+k get pod -o wide 
+ind-pod wont be added in node01 coz of its already tainted
+
+k edit pod ind-pod 
+copy tolerations yaml code from k8s documentation
+
+
+k run chn-pod --image nginx --dry-run=client -o yaml
+k run chn-pod --image nginx --dry-run=client -o yaml > chn-pod.yaml
+vi chn-pod.yaml
+copy toleration yaml code inside under spec
+
+k create -f chn-pod.yaml
+k get pods -o wide 
+
+k taint nodes node01 env=prod:NoSchedule-
+The node will be untainted
+k describe nodes node01 | grep -i taint 
+
+Node Affinity ( Node )
+
+k run first-pod --image nginx --dry-run=client -o yaml
+k run first-pod --image nginx --dry-run=client -o yaml > first-pod.yaml
+
+giving property inside spec 
+
+affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: country 
+            operator: In
+            values:
+            - ind 
+			
+k create -f first-pod.yaml
+k get pods -o wide 
+k describe pod first-pod
+
+DaemonSet: 
+
+k get ds
+k get ds -n kube-system 
+
+k create deployment ds1 --image k8s.gcr.io/fluentd-elasticsearch:1.20 -n kube-system --dry-run=client -o yaml 
+
+k create deployment ds1 --image k8s.gcr.io/fluentd-elasticsearch:1.20 -n kube-system --dry-run=client -o yaml > ds1.yaml
+
+vi ds1.yaml -> change kind name to DaemonSet
+k create -f ds1.yaml 
+k get ds -n kube-system 
+
+
+Static pod:
+The kubelet monitors this directory and automatically starts and stops the Pods based on changes to the manifest files. 
+Static Pods are useful for running critical system components directly on a node, you can create a static Pod for that component to ensure it is always running on that node.
+
+InitContainers:
+
+k run dxb-pod --image nginx --dry-run=client -o yaml > init.yaml
+
+vi init.yaml -> copy inityaml from k8s docs
+k create -f init.yaml
+
+Monitor cluster:
+
+https://medium.com/@iamarunix/monitor-node-and-pod-using-metricserver-9ddae80bfc9b
+
+k top pods 
+k top pods -n kube-system 
+
+Deployments Rollback:
+
+k get deploy
+k get deploy -n kube-system
+k describe deploy metrics-server -n kube-system
+StrategyType: RollingUpdate 
+
+kubectl set image deployment.v1.apps/nginx-deployment nginx=nginx:1.16.1
+
+k rollout status deployment <deployname>
+
+k rollout history deployment <deployname>
+
+Environmental variables:
+
+Configmaps:
+k get cm 
+k create cm --help
+k create configmap cm1 --from-literal=db=oracle --from-literal=cert=sso 
+k get cm 
+k run pod1 --image nginx --dry-run=client -o yaml
+vi pod1.yaml- copy configmap doc template 
+k create -f pod1.yaml 
+
+Secrets:
+
+----------
+Volumes:
+
+Temporary storage (empty Dir) -> ephemeral
+Permanent storage (PV, PVC) -> persistence 
+
+vi emptydir.yaml
+
+copy empty dir from k8s doc 
+==========================================================
+Kubernetes End to End project on EKS | EKS Install and app deploy with Ingress:
+
+https://www.youtube.com/watch?v=RRCrY12VY_s&t=25s
+
+DevOps day to day activites | What and How GitOps works | Terraform for IaaS in Real-world:
+
+https://www.youtube.com/watch?v=BJCkZuSW6ik
+
+====================================================================================================================================
+
+Abhishek veeramalla :
+
+Master node + Worker node =Cluster
+
+Controlplane: 
+Kube-API server -> communication between master node components and worker node.
+ETCD -> Inbuilt database, keep track of every cluster transaction that occurs. (Key value store)
+Kube controller manager -> Monitor k8s objects and remediate the situation.
+Kube Scheduler -> find best nodes for each containers.
+
+Dataplane:
+Kubelet -> Operates pods from API server instructions
+Kubeproxy -> maintain network between nodes and enables comm between Pods and external APIs
+Container Run time. 
+
+Minikube & kubectl installation
+
+vi pod.yaml 
+k create -f pod.yaml 
+k apply -f pod.yaml 
+kubectl get pods
+k get nodes 
+k describe pod <podname>
+
+k8s deployment 
+
+containers -> created using docker run command
+pod -> created through yaml manifest (running specification)-> single or multiple container 
+deployment -> auto healing and auto scaling features. 
+
+replicaSet -> k8s controller (proper healing feature) -> no of replica of pods 
+
+k get deploy
+k get rs
+k delete deploy <deployname>
+
+k8s Services: 
+
+ideal pod count -> depends on the replica of application can handle.
+
+Service discovery concept -> Labels and Selectors
+
+label tag -> eg: app: payment
+
+Service can expose to world. 
+
+1. ClusterIP -> default , accessed inside cluster
+2. nodeport -> allow application to access inside organization (Node Access)
+3. Load balancer -> expose service to external world 
+
+Docker-> Container platform
+k8s -> cont orchestration env offers features like
+Auto scaling, healing, Clustering and Enterprise level support like load balancing.
+
+Namespace -> logical isolation of resources
+
+Services types: ClusterIP mode, Nodeport mode, Loadbalancer mode 
+
+k8s activities:
+- manage k8s cluster for organization
+- ensures the application are deployed on cluster
+- troubleshooting issues on pods
+- cont maintenace activities on worker nodes, upgrading the version, installing the mandatory packages on worker nodes
+- resolving JIRA tickets based on issues 
+
+
+k edit svc <svc name> 
+
+Ingress: it exposes http and https routes from outside the cluster 
+to services within cluster. traffic routing is controlled by rules 
+defined on the ingress resource. 
+
+k get ing 
+
+Services doesn't have Enterprise level load balancer capabilties so they are using Ingress with service 
+
+customer resource: 
+
+CRD = org will defining new type of API to k8s -> submit the CRD to k8s 
+
+config maps: 
+
+========================================================================================
+
+* Week 7
+
+-> Continuous Integration/Continuous Delivery/Deployment (CI/CD)
+
+-> Principles of CI/CD
+
+-> Jenkins - Integration tool 
+
+-> How to create jobs and pipelines in Jenkins 
+
+-> How to integrate Jenkins with other tools
+
+========================================================
+
+CICD:
+
+A continuous integration and continuous deployment (CI/CD) pipeline is a series of steps that must be performed in order to deliver 
+a new version of software. 
+
+CI/CD pipelines are a practice focused on improving software delivery throughout the software development life cycle via automation.
+
+four major phases: source, build, test and deploy.
+
+https://www.techtarget.com/searchsoftwarequality/CI-CD-pipelines-explained-Everything-you-need-to-know#:~:text=The%20CI%2FCD%20pipeline%20combines,%2C%20build%2C%20test%20and%20deploy.
+
+
+Plan ->   Code ->  Build ->    Test   ->   Release ->  Deploy ->  Monitor 
+
+Continuous Integration ===============      ========Continuous Delivery/Deploy ====
+
+https://semaphoreci.com/cicd
+
+github ->  Webhook -> Automation 
+
+============================
+
+Jenkins:
+
+Intro
+
+Installation
+
+Creating jobs
+
+Queuing of jobs 
+
+-> Upstream and Downstream proj             A+B+C 
+
+Dev
+
+Prod
+
+Test
+
+Job -> configure -> Post-build Actions -> Build other projects -> proj name 
+
+Build Triggers:
+
+Build Trigger -> Build Periodically (crontab)
+
+remote trigger :
+
+Try to run it by giving URL 
+
+=================
+
+Ticketing tool: JIRA 
+
+Dev - jenkins install for int purpose -> raise ticket -> devops team 
+
+req = 1amazon linux ec2, 15gb ebs , t3,medium inst type, 22 port , 
+
+---------------------------------------------------------------------
+
+Security policy in jenkins! 
+
+Plugins -> Role based authorization strategy 
+
+Manage jenkins -> Security -> Authorization -> Role based strategy. (Manage and Assign Roles )
+
+Create users -> User1 User2
+
+Manage Jenkins -> manage and assign roles 
+
+        global role- employee -> read permission        item role -> dev.* test.*   
+
+ cron regex -> regex101.com 
+
+Assign roles -> logout and login with particular users to check if there is access for given roles. 
+
+-------------------------------------------------------------------
+
+Tomcat Deployment in jenkins:
+
+apache-tomcat-8.5.94  -> tar -xzvf <filename>
+
+mv apache-tomcat-8.5.94 /opt/     -> /opt/ Add on software packages 
+ 
+
+Jenkins and Tomcat port number - 8080
+
+We need to change the port number - jenkins 
+
+/opt/apache-tomcat-8.5.94/conf/ -> server.xml (config file)
+
+configuration file path:
+
+Ubuntu - /etc/default/jenkins
+Amazon linux - /etc/sysconfig/jenkins
+
+/etc/sysconfig/jenkins = changed port number to 9090 
+
+service jenkins stop
+service jenkins start 
+
+https://www.youtube.com/watch?v=QYZ5Q6IqQ-s
+
+systemctl stop jenkins
+systemctl status jenkins
+
+cd /etc/default/ 
+ls 
+vi jenkins                  change port number 9090 
+cd /lib/systemd/system
+ls
+vi jenkins.service    -> change port number   - Environment="Jenkins_port=9090"
+systemctl daemon-reload
+systemctl restart jenkins 
+
+
+/opt/apache-tomcat-8.5.94/ -> /bin/   -> startup.sh   shutdown.sh    Tomacat start or stop 
+
+./startup.sh  -> Tomcat started
+
+Deployment activity: 
+
+Download sample war file 
+
+cp /root/sample.war /var/lib/jenkins/workspace/autodeployment
+
+Deploy to container plugin install 
+
+/opt/apache-tomcat-8.5.94/conf -> vi tomcat-users.xml     
+
+Add this line: 
+
+<role rolename="manager-gui"/>
+   <role rolename="manager-script"/>
+   <role rolename="manager-jmx"/>
+   <role rolename="manager-status"/>
+   <user username="admin" password="admin" roles="manager-gui,manager-script,manager-jmx,manager-status"/>
+   <user username="deployer" password="deployer" roles="manager-script"/>
+   
+Stop and Start Tomcat app
+   
+   
+Error:
+
+
+https://stackoverflow.com/questions/41675813/the-username-you-provided-is-not-allowed-to-use-the-text-based-tomcat-manager-e
+   
+   
+===========================================================================
+
+Declarative pipeline vs scripted pipeline.
+
+Delivery pipeline
+Build pipeline
+Build Monitor
+
+
+
+https://www.youtube.com/watch?v=RYQf5bHFEO0
+
+https://www.youtube.com/watch?v=9RsmPNs7gT0    = #1 - Jenkins Master and Slave Configuration | How to run Jenkins job on Slave node
+
+https://www.youtube.com/watch?v=Na282SnLmbQ     =  #2 - Build Maven project on Jenkins Slave Node 
+
+https://www.youtube.com/watch?v=AgLn2xyFyTk    = #3 Jenkinsfile to Build and Push Image onto DockerHub
+
+
+https://www.youtube.com/watch?v=hwrYURP4O2k  = Jenkins Master Slave Configuration | How to setup Jenkins master and slave
+
+==============================
+
+
+
+
+Pipeline:
+
+Scripted Pipeline   = Not using 
+
+Declarative pipeline   = Almost used 
+
+---------------------
+
+Dockerization using Nodejs application :
+
+Code = nodejs 
+
+COntainer tool  = Docker          Docker machine -> image -> 1 container  - httpd, tomcat, word press, 
+
+SCM   = Github 
+
+CI tool  = Jenkins 
+
+Nodejs app:
+
+package.json
+server.js
+DockerFile
+
+---------------------------
+
+git clone -> image build -> image run (container)
+
+docker build -t nodejs .
+docker run -itd --name=samplejs -p "9000:9000" nodejs
+curl localhost:9000
+
+(build)  docker images ->(run) comtainer 
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Git Clone') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'new token', url: 'https://github.com/Shivoffline/samplenodejs.git']]])
+                echo 'Project was cloned successfully'
+            }
+        }
+        stage('docker stop') {
+            steps {
+                sh 'docker stop samplejs'
+            }
+        }
+        stage('docker remove') {
+            steps {
+                sh 'docker rm samplejs'
+            }
+        }
+        stage('docker remove image') {
+            steps {
+                sh 'docker rmi nodejs'
+            }
+        }
+        stage('docker build') {
+            steps {
+                sh 'docker build -t nodejs .'
+            }
+        }
+        stage('docker run') {
+            steps {
+                sh 'docker run -itd --name=samplejs -p "9000:9000" nodejs'
+            }
+        }
+    }
+}
+		  
+		  
+================================================================================================
+
+Sonar Qube setup on AWS :
+
+https://www.youtube.com/watch?v=E5hMOGeBT-o&list=PLxzKY3wu0_FL3TzBnBeBoIMoRkXmYe3VB
+
+https://github.com/ravdy/DevOps/blob/master/sonarqube/Setup_SonarQube.md
+
+https://cigdemkadakoglu.medium.com/sonarqube-installation-on-ubuntu-20-04-with-community-branch-plugin-53e20cbded08
+
+SonarQube Integration with Jenkins:
+
+https://www.youtube.com/watch?v=wn9wWYAShag
+
+===================================================================================================
+
+Docker:
+
+docker images
+docker ps
+docker ps -a
+
+docker run -itd --name webserver -p "8888:80" httpd
+
+docker exec -it <containerID>
+
+docker stop contid
+
+docker start contid
+
+docker rm -f contname 
+docker rmi imagename
+
+docker inspect contid 
+docker logs
+docker stats
+docker top
+
+converting cont to image:
+
+install vim git 
+
+docker commit contname image1:v1.0 
+
+backup:
+
+docker save -o /usr/local/myimagebackup.tar image1:v1.0
+
+docker load -i myimagebackup.tar 
+
+
+docker login
+docker tag image1:v1.0 shivoffline/httpd_vim_git
+docker push shivoffline/httpd_vim_git
+
+
+docker architecture:
+
+Volumes:  backup or synchronization 
+
+/root/html 
+
+docker run -itd -p "7070:80" -v "/root/html:/usr/local/apache2/htdocs" httpd 
+
+docker volume ls
+docker volume create my-volume
+docker inspect my-volume   - cd mountpoint path 
+docker run -itd --mount source=my-vol,destination=/usr/local/apache2/htdocs -p "5050:80" httpd
+docker run -itd --mount source=my-vol,destination=/usr/local/apache2/htdocs -p "6060:80" httpd
+
+DockerFile
+
+From centos
+Label Name="Shiva"
+Run yum install httpd -y
+
+mkdir test
+
+docker build -t myimage:v1.0 /root/test 
+
+Now installing vim and git from DockerFile
+
+FROM centos
+LABEL Name="Shiva"
+RUN yum install vim -y
+RUN yum install git -y
+
+
+sudo amazon-linux-extras install java-openjdk11 -y 
+
+==================================
+
+What is Jenkins, and how does it fit into the DevOps ecosystem?
+
+Explain the difference between a Jenkins Pipeline and a Freestyle project. When would you choose one over the other?
+
+How do you set up and configure Jenkins for the first time? Can you explain the key configuration options?
+
+What is a Jenkinsfile, and how is it used in Jenkins pipelines?
+
+How do you trigger a Jenkins job or pipeline automatically when changes are pushed to a Git repository?
+
+Explain the concept of Jenkins agents or nodes. What is the difference between a master and a slave node?
+
+What is the purpose of Jenkins Plugins, and can you name a few common Jenkins plugins used in real-world scenarios?
+
+How do you secure a Jenkins server, and what are some best practices for Jenkins security?
+
+Describe Blue-Green Deployment and Canary Deployment in the context of Jenkins. How can Jenkins facilitate these deployment strategies?
+
+What are Jenkins build tools, and can you name some popular build tools integrated with Jenkins?
+
+Explain the concept of parameterized builds in Jenkins. When and why would you use them?
+
+How do you set up a multi-branch pipeline in Jenkins, and what are its benefits?
+
+What is Jenkins Artifacts and how can you manage them in Jenkins?
+
+Describe the use of the "archive" and "stash" steps in a Jenkins pipeline. When would you use one over the other?
+
+How can you automate the deployment process using Jenkins, and what are some common deployment automation strategies?
+
+Explain how to schedule builds and jobs in Jenkins. What is the purpose of the Jenkins Scheduler?
+
+What is Jenkins Blue Ocean, and how does it enhance the Jenkins user interface and user experience?
+
+Describe the key differences between Jenkins and other CI/CD tools like Travis CI, CircleCI, and GitLab CI/CD.
+
+How do you handle Jenkins job failures, and what are some troubleshooting techniques you would use to identify and resolve issues?
+
+Can you provide an example of a challenging real-world problem you've encountered while working with Jenkins and how you resolved it?
+
+
+
+
+sudo amazon-linux-extras install java-openjdk11 -y 
+
+which java
+
+readlink -f <>
+----------------------------------=========================================================================================
+
+Week: 5 & 6
+
+DevOps 
+
+DevOps culture, principles, and practices
+
+                     ============= I1==================== =========== I2 ==================== =========== I3 ================
+Agile       =  Plan + code + Implementation + Deployment + code + Implementation + Deployment + code + Implementation + Deployment + Monitoring + go live
+
+DevOps  =  Plan + code + Implementation + Deployment + Monitoring + Plan + code + Implementation + Deployment + Monitoring + Plan + code + Implementation + Deployment + Monitoring
+           ============I1 ======================================== =====================I2 ===============================
+
+DevOps = Agile + Open source Automation tools 
+
+Quick delivery
+Eliminates waste from project
+Accuracy
+Customer satisfaction / Business improvment
+
+Engineering services:
+
+1. Server Engineering 2. Database Engineering 3. Network Engineering 4. Application Engineering 5. Storage Engineering 6. Security Engineering
+
+
+==============================================
+
+DevOps Tools:
+
+1. Ansible, Chef , Puppet                    - Deployment & Configuration mgmt tool 
+
+2. GIT  (Source code management tool)        -  Version control system                        - 
+
+3. Terraform                                 - Env Build tool  (IAC) Infra as a code 
+
+4. Jenkins                                   - Integration tool 
+
+6. K8S 										- container management tool - 
+
+7. Docker									- container services 
+
+10. DataDog, Splunk, AppD, Prometheus, Grafana. New Relic 
+
+
+AWS - Cloud service - Infrastructure 
+
+AWS - Infra
+Devops - Implementation 
+
+Devops = Bridge between Delivery business unit and Dev business unit 
+
+
+========================================
+
+Git - Version Control system
+
+Github - Web based GIT repo 
+
+
+Version control system = They are process management system while maintain changes recorded in a file or set of file over a period of time.
+
+https://www.javatpoint.com/git-version-control-system
+
+A version control system is a software that tracks changes to a file or set of files over time so that you can recall specific versions later. It also allows you to work together with other programmers.
+
+The version control system is a collection of software tools that help a team to manage changes in a source code. It uses a special kind of database to keep track of every modification to the code.
+
+Developers can compare earlier versions of the code with an older version to fix the mistakes.
+
+Benefits:
+
+Complete change history of the file
+Simultaneously working
+Branching and merging
+Traceability
+
+Types:
+
+Localized version Control System:
+
+The localized version control method is a common approach because of its simplicity. But this approach leads to a higher chance of error. In this approach, you may forget which directory you're in and accidentally write to the wrong file or copy over files you don't want to.
+
+To deal with this issue, programmers developed local VCSs that had a simple database. Such databases kept all the changes to files under revision control. A local version control system keeps local copies of the files.
+
+The major drawback of Local VCS is that it has a single point of failure.
+
+
+Centralized version control systems:
+
+The developers needed to collaborate with other developers on other systems. The localized version control system failed in this case. To deal with this problem, Centralized Version Control Systems were developed.
+
+Centralized version control systems have many benefits, especially over local VCSs.
+
+Everyone on the system has information about the work what others are doing on the project.
+Administrators have control over other developers.
+It is easier to deal with a centralized version control system than a localized version control system.
+A local version control system facilitates with a server software component which stores and manages the different versions of the files.
+
+Distributed version control systems:
+
+Centralized Version Control System uses a central server to store all the database and team collaboration. But due to single point failure, which means the failure of the central server, developers do not prefer it. Next, the Distributed Version Control System is developed.
+
+In a Distributed Version Control System (such as Git, Mercurial, Bazaar or Darcs), the user has a local copy of a repository. So, the clients don't just check out the latest snapshot of the files even they can fully mirror the repository. The local repository contains all the files and metadata present in the main repository.
+
+====================================================
+
+Git is a distributed version control system that enables software development teams to have multiple local copies of the project's codebase independent of each other. These copies, or branches, can be created, merged, and deleted quickly, empowering teams to experiment, with little compute cost, before merging into the main branch (sometimes referred to as the master branch). Git is known for its speed, workflow compatibility, and open source foundation.
+
+Most Git actions only add data to the database, and Git makes it easy to undo changes during the three main states.
+
+Git has three file states: Untracked/modified, staged, and committed.
+
+1. A modified file has been changed but isn't committed to the database yet.
+
+2.  staged file is set to go into the next commit.
+
+3. When a file is committed, the data has been stored in the database.
+
+With Git, software teams can experiment without fearing that they'll create lasting damage to the source code, because teams can always revert to a previous version if there are any problems.
+
+
+
+========================================================
+Creating GIThub account -> creating new repo 
+
+Basic requirements:
+
+1. Download GIT software for Windows. 
+2. Download VSC 
+3. Github sign in 
+
+Command prompt: git config --global user.name "Shivoffline"
+				git config --global user.email "sivaprasad1393@gmail.com"
+				
+GIT flow:
+
+Working directory U = Local machine
+
+Staging Area A = BUffer location/Parking area
+
+LOcal repository = (.GIT) 
+
+Remote repository = Github/gitlab/bitbucket 
+				
+Task 
+
+1. Cloning file from github to VSC. -> git clone  (Clone entire repo)
+
+    Created File2.txt in VSC -> git status  -> Untracked file U (Working Dir)
+	
+	git add File2.txt -> git status -> Staging area A 
+	
+	git commit -m "message"  -> Pushed to Local repo (.GIT)
+	
+	git push origin main -> Pushed to Remote repo (Github)
+	
+
+				Any File in VSC: 
+				
+				Insert/Modify -> Add -> Commit -> Push 
+				
+2.  In File2.txt , i have added a first line, so the status shows as M (Modified)
+     so we need to follow the same process as above. 
+	 
+					Add -> Commit -> Push 
+					
+3. I have deleted File2.txt. you can view the deleted status using git status command
+
+		now we need to make the changes in remote repo, so add and commit the changes to push to remote repo.
+		
+		Add File2.txt -> Commit -> Push main origin 
+		
+4. If we are making any changes in Github by creating or modifying any file, you can use git pull command to fetch all the changes. 
+
+5. Created a new folder Tasknew with file name index.html
+
+   git status won't work because git is not initialized in Tasknew folder. (.git folder is not inside Tasknew)
+   
+   git init  -> initialize git within Tasknew
+   
+   
+6. Tried git push origin main command .. Doesn't works. so created a new repo with name Tasknew 
+
+git remote push origin <link>
+
+src doesn't match any.
+
+git branch   -> *master            we need to change the branch name from master to main
+
+git branch -M main                
+
+now trying git push origin main command, index.html file will be moved to Tasknew github repo. 
+
+git log 
+git log --oneline   -> To check the commit details 
+
+===================================
+
+Branching & Merging: 
+
+https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging
+
+
+First, i have created a branch1 (Feature branch)
+
+git pull command 
+
+git branch <newbranchname>   -> To create a new branch 
+
+git branch -a   -> command shows branch details   
+
+git checkout branch1   ->   * branch1 (To switch between branches)
+
+Then, i have created a new file named branch1.txt and pushed to Remote repo
+
+git push origin branch1 
+
+Anyway, the changes wont reflect in main branch. 
+
+branch1.txt file will be visible only in branch1   -> You need to merge feature branch with main branch 
+
+git merge branch1    -> git push origin main 
+
+Merge - Wont directly merge Feature branch with main branch -> Pull Request 
+
+
+main
+
+branch1, branch2, branch3 ------ branchn = Feature branch 
+
+===================
+
+Pull Request: 
+
+https://www.atlassian.com/git/tutorials/making-a-pull-request
+
+
+Merge conflicts:
+
+https://opensource.com/article/23/4/resolve-git-merge-conflicts
+
+https://www.javatpoint.com/git-merge-and-merge-conflict
+
+==========================
+
+Working with remote repositories:
+
+https://git-scm.com/book/en/v2/Git-Basics-Working-with-Remotes
+
+=============================
+
+Git commands:
+
+git clone
+git log / git log --oneline
+git status
+git add
+git commit
+git push
+git pull
+git fork
+git stash
+git rebase  - The git rebase command allows you to easily change a series of commits, modifying the history of your repository
+git cherrypick  - git cherry-pick in git means choosing a commit from one branch and applying it to another branch
+git fetch
+git remote add
+
+=====================================================================================================================
+
